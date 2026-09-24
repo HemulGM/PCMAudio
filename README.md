@@ -1,15 +1,15 @@
 # PCM audio layer
 
 `PCM` is a portable PCM audio output layer. The emulator code
-only works with the TPCMAudio facade; the selection of the native API and queue management remain
+only works with the `TPCMAudio` facade; the selection of the native API and queue management remain
 in the backend.
 
 ## Composition
 
 | Unit | Purpose |
 | --- | --- |
-| ` PCM.Audio` | Public facade: 'TPCMAudio', queue format and status. |
-| `PCM.Audio.Backend` | The 'IPCMAudioBackend` contract and common record types. |
+| `PCM.Audio` | Public facade: `TPCMAudio`, queue format and status. |
+| `PCM.Audio.Backend` | The `IPCMAudioBackend` contract and common record types. |
 | `PCM.Audio.Factory` | Selects the backend for the target platform. |
 | `PCM.Audio.Windows.MMSystem` | Windows WaveOut (`winmm`). |
 | `PCM.Audio.Android.AudioTrack` | Android `AudioTrack`. |
@@ -34,19 +34,19 @@ try
   var State := Audio.QueueState;
   if Audio.Error <> '' then
   begin
-// Pass Audio.Error to the log or the application status.
+    // Pass Audio.Error to the log or the application status.
   end;
 finally
   Audio.Free;
 end;
 ```
 
-`Samples` contains signed 16-bit PCM values (`SmallInt') in
+`Samples` contains signed 16-bit PCM values (`SmallInt`) in
 interleaved order. `Count` is the number of **frames**, not the number of values: for
-stereo format, the array must contain at least `Count * Channels'
+stereo format, the array must contain at least `Count * Channels`
 of elements. The `Count` must be in the range from `0` to `BlockFrames'.
 
-Create, use, and destroy TPCMAudio in a single thread. This is especially
+Create, use, and destroy `TPCMAudio` in a single thread. This is especially
 important for backends, whose native resources and callbacks are linked to
 the owner's stream.
 
@@ -60,10 +60,10 @@ are discarded, which is reflected in `DroppedSamples`.
 
 | Field | Value |
 | --- | --- |
-| ` SubmittedSamples` | The accumulated number of frames received. |
+| `SubmittedSamples` | The accumulated number of frames received. |
 | `DroppedSamples` | The accumulated number of dropped frames. |
 | `Clears` | The number of cleanup calls; the counter is 32-bit. |
-| `PlayedSamples` | Playback position, valid only for `PositionKnown = True'; can be reset after `Clear'. |
+| `PlayedSamples` | Playback position, valid only for `PositionKnown = True`; can be reset after `Clear`. |
 | `QueuedBlocks` | Estimation of the number of blocks awaiting output. |
 | `DeviceOpen` | The device is successfully opened. |
 | `PositionKnown` | The backend was able to determine the playback position. |
@@ -79,9 +79,9 @@ the queue status, rather than waiting for an exception for every device error.
 
 | Condition | Backend |
 | --- | --- |
-| ` MSWINDOWS` | `PCM.Audio.Windows.MMSystem` |
+| `MSWINDOWS` | `PCM.Audio.Windows.MMSystem` |
 | `ANDROID` | `PCM.Audio.Android.AudioTrack` |
-| `LINUX` (not Android) | `PCM.Audio.Linux.Alsa` |
+| `LINUX` | `PCM.Audio.Linux.Alsa` |
 | `MACOS` or `IOS` | `PCM.Audio.Apple.AudioQueue` |
 | Other platform | `PCM.Audio.Null` with the message that there is no implementation |
 
@@ -90,23 +90,20 @@ platform. This is convenient for headless builds and checking portable code with
 opening the audio device.
 
 In Delphi, add the facade itself, factory, backend, and the required platform
-unit to the project. In 'NESFMX.dpr` this has already been done by conditional `uses` sections.
+unit to the project. In `NESFMX.dpr` this has already been done by conditional `uses` sections.
 
 ## Adding a backend
 
-The new implementation must implement the 'IPCMAudioBackend` and honor the contract.:
+The new implementation must implement the `IPCMAudioBackend` and honor the contract:
 
 1. Copy the input PCM data before returning from the `Submit`.
 2. Do not block the calling stream while waiting for playback.
-3. Limit the `blockCount` queue to blocks and account for overflow in
-   `DroppedSamples`.
+3. Limit the `blockCount` queue to blocks and account for overflow in `DroppedSamples`.
 4. Cancel the pending playback in `Clear`.
 5. Stop native callbacks before releasing buffers.
 6. Report device failure via `Error` and `QueueState'.
 
-After adding the unit, it is connected to the conditional sections of the PCM.Audio.Factory` and in
-`uses` the project for the corresponding platform.
-
+After adding the unit, it is connected to the conditional sections of the `PCM.Audio.Factory` and in `uses` the project for the corresponding platform.
 
 <details>
   <summary>ru</summary>
