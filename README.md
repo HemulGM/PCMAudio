@@ -56,7 +56,7 @@ the owner's stream.
 returns control. If the device is full or unavailable, frames
 are discarded, which is reflected in `DroppedSamples`.
 
-'QueueState` returns a snapshot of the status:
+`QueueState` returns a snapshot of the status:
 
 | Field | Value |
 | --- | --- |
