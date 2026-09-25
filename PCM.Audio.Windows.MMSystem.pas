@@ -1,4 +1,4 @@
-unit PCM.Audio.Windows.MMSystem;
+п»їunit PCM.Audio.Windows.MMSystem;
 
 interface
 
@@ -168,7 +168,7 @@ begin
       Exit;
     end;
 
-  // Все буферы заняты — отбрасываем новый блок, чтобы не увеличивать latency.
+  // Р’СЃРµ Р±СѓС„РµСЂС‹ Р·Р°РЅСЏС‚С‹ вЂ” РѕС‚Р±СЂР°СЃС‹РІР°РµРј РЅРѕРІС‹Р№ Р±Р»РѕРє, С‡С‚РѕР±С‹ РЅРµ СѓРІРµР»РёС‡РёРІР°С‚СЊ latency.
   Inc(FDroppedSamples, Count);
 end;
 

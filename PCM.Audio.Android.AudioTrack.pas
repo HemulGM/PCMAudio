@@ -1,4 +1,4 @@
-unit PCM.Audio.Android.AudioTrack;
+﻿unit PCM.Audio.Android.AudioTrack;
 
 interface
 

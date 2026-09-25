@@ -1,4 +1,4 @@
-unit PCM.Audio.Factory;
+﻿unit PCM.Audio.Factory;
 
 interface
 

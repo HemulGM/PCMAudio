@@ -1,4 +1,4 @@
-unit PCM.Audio.Null;
+﻿unit PCM.Audio.Null;
 
 interface
 

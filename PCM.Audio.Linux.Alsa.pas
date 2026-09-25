@@ -1,4 +1,4 @@
-unit PCM.Audio.Linux.Alsa;
+﻿unit PCM.Audio.Linux.Alsa;
 
 interface
 
