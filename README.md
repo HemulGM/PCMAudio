@@ -89,9 +89,6 @@ The definition of `PCM_AUDIO_NULL` forcibly selects `PCM.Audio.Null` on any
 platform. This is convenient for headless builds and checking portable code without
 opening the audio device.
 
-In Delphi, add the facade itself, factory, backend, and the required platform
-unit to the project. In `NESFMX.dpr` this has already been done by conditional `uses` sections.
-
 ## Adding a backend
 
 The new implementation must implement the `IPCMAudioBackend` and honor the contract:
@@ -198,9 +195,6 @@ interleaved-порядке. `Count` — число **кадров**, а не ч�
 Определение `PCM_AUDIO_NULL` принудительно выбирает `PCM.Audio.Null` на любой
 платформе. Это удобно для headless-сборок и проверки переносимого кода без
 открытия аудиоустройства.
-
-В Delphi добавьте в проект сам фасад, factory, backend и нужный платформенный
-unit. В `NESFMX.dpr` это уже сделано условными секциями `uses`.
 
 ## Добавление backend-а
 
