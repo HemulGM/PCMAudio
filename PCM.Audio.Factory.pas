@@ -1,4 +1,4 @@
-﻿unit PCM.Audio.Factory;
+unit PCM.Audio.Factory;
 
 interface
 
@@ -26,6 +26,7 @@ uses
 
 function CreatePlatformPCMAudioBackend(const Format: TPCMAudioFormat): IPCMAudioBackend;
 begin
+  Format.Validate;
   {$IF Defined(PCM_AUDIO_NULL)}
   Result := TPCMAudioBackendNull.Create(Format);
   {$ELSEIF Defined(MSWINDOWS)}

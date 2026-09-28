@@ -1,4 +1,4 @@
-﻿unit PCM.Audio.Apple.AudioQueue;
+unit PCM.Audio.Apple.AudioQueue;
 
 interface
 
@@ -70,7 +70,8 @@ type
     function EnsureStarted: Boolean;
     class procedure BufferReturned(UserData, Queue: Pointer; Buffer: PAppleQueueBuffer); static; cdecl;
   public
-    constructor Create(const AudioFormat: TPCMAudioFormat); reintroduce;
+    constructor Create(const AudioFormat: TPCMAudioFormat); overload;
+    constructor Create(const AudioFormat: TPCMAudioFormat; const Api: TAppleAudioApi); overload;
     destructor Destroy; override;
     procedure Clear;
     procedure Submit(const Samples: array of SmallInt; Count: Integer);
@@ -97,6 +98,7 @@ const
   _PU = '';
   {$ENDIF}
 
+{$IF Defined(MACOS) or Defined(IOS)}
 function AudioQueueNewOutput(Format: PAppleStreamFormat; Callback: TAppleOutputCallback; UserData, RunLoop, RunLoopMode: Pointer; Flags: Cardinal; out Queue: Pointer): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueNewOutput';
 
 function AudioQueueAllocateBuffer(Queue: Pointer; Size: Cardinal; out Buffer: PAppleQueueBuffer): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueAllocateBuffer';
@@ -120,6 +122,7 @@ begin
   {$ENDIF}
 end;
 
+{$ENDIF}
 function TAppleAudioApi.Complete: Boolean;
 begin
   Result :=
@@ -134,19 +137,30 @@ end;
 
 constructor TPCMAudioBackendApple.Create(const AudioFormat: TPCMAudioFormat);
 begin
+  var Api := Default(TAppleAudioApi);
+  {$IF Defined(MACOS) or Defined(IOS)}
+  Api.NewOutput := AudioQueueNewOutput;
+  Api.AllocateBuffer := AudioQueueAllocateBuffer;
+  Api.EnqueueBuffer := AudioQueueEnqueueBuffer;
+  Api.Start := AudioQueueStart;
+  Api.Stop := AudioQueueStop;
+  Api.Dispose := AudioQueueDispose;
+  Api.ActivateSession := ActivateAppleSession;
+  {$ENDIF}
+  Create(AudioFormat, Api);
+end;
+
+constructor TPCMAudioBackendApple.Create(const AudioFormat: TPCMAudioFormat;
+  const Api: TAppleAudioApi);
+begin
   inherited Create;
-  if (AudioFormat.SampleRate <= 0) or (AudioFormat.Channels <= 0) or
-    (AudioFormat.BlockFrames <= 0) or (AudioFormat.BlockCount <= 0) then
-    raise EArgumentOutOfRangeException.Create('Invalid PCM audio format');
+  AudioFormat.Validate;
   FAudioFormat := AudioFormat;
-  FApi.NewOutput := AudioQueueNewOutput;
-  FApi.AllocateBuffer := AudioQueueAllocateBuffer;
-  FApi.EnqueueBuffer := AudioQueueEnqueueBuffer;
-  FApi.Start := AudioQueueStart;
-  FApi.Stop := AudioQueueStop;
-  FApi.Dispose := AudioQueueDispose;
-  FApi.ActivateSession := ActivateAppleSession;
-  OpenDevice;
+  FApi := Api;
+  if not FApi.Complete then
+    FError := 'Incomplete AudioQueue function table'
+  else
+    OpenDevice;
 end;
 
 procedure TPCMAudioBackendApple.OpenDevice;

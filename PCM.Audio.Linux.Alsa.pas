@@ -1,4 +1,4 @@
-﻿unit PCM.Audio.Linux.Alsa;
+unit PCM.Audio.Linux.Alsa;
 
 interface
 
@@ -128,6 +128,7 @@ end;
 constructor TPCMAudioBackendLinux.Create(const AudioFormat: TPCMAudioFormat; const DeviceName: UTF8String);
 begin
   inherited Create;
+  AudioFormat.Validate;
   FAudioFormat := AudioFormat;
 
   if LoadAlsa(FApi, FModule, FError) then
@@ -137,6 +138,7 @@ end;
 constructor TPCMAudioBackendLinux.Create(const AudioFormat: TPCMAudioFormat; const Api: TAlsaApi; const DeviceName: UTF8String);
 begin
   inherited Create;
+  AudioFormat.Validate;
   FAudioFormat := AudioFormat;
   FApi := Api;
 

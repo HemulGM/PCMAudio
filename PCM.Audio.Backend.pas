@@ -1,4 +1,4 @@
-﻿unit PCM.Audio.Backend;
+unit PCM.Audio.Backend;
 
 interface
 
@@ -8,6 +8,7 @@ type
     Channels: Integer;
     BlockFrames: Integer;
     BlockCount: Integer;
+    procedure Validate;
   end;
 
   TPCMAudioQueueState = record
@@ -40,6 +41,20 @@ type
   end;
 
 implementation
+
+uses
+  System.SysUtils;
+
+procedure TPCMAudioFormat.Validate;
+begin
+  if (SampleRate <= 0) or (Channels < 1) or (Channels > 2) or
+    (BlockFrames <= 0) or (BlockCount <= 0) or
+    (Int64(BlockFrames) * Channels * SizeOf(SmallInt) > MaxInt) or
+    (Int64(BlockFrames) * BlockCount > MaxInt) or
+    (Int64(BlockFrames) * BlockCount * Channels * SizeOf(SmallInt) > MaxInt) or
+    (Int64(SampleRate) * Channels * SizeOf(SmallInt) > MaxInt) then
+    raise EArgumentOutOfRangeException.Create('Invalid PCM audio format');
+end;
 
 end.
 

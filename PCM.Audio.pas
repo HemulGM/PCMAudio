@@ -1,4 +1,4 @@
-﻿unit PCM.Audio;
+unit PCM.Audio;
 
 interface
 
@@ -14,9 +14,11 @@ type
   private
     FBackend: IPCMAudioBackend;
     FBlockSamples: Integer;
+    FChannels: Integer;
     function GetError: string;
   public
-    constructor Create(const AudioFormat: TPCMAudioFormat); reintroduce;
+    constructor Create(const AudioFormat: TPCMAudioFormat); overload;
+    constructor Create(const AudioFormat: TPCMAudioFormat; const Backend: IPCMAudioBackend); overload;
     procedure Clear;
     procedure Submit(const Samples: array of SmallInt; Count: Integer);
     function QueueState: TPCMAudioQueueState;
@@ -30,12 +32,19 @@ uses
 
 constructor TPCMAudio.Create(const AudioFormat: TPCMAudioFormat);
 begin
+  AudioFormat.Validate;
+  Create(AudioFormat, CreatePlatformPCMAudioBackend(AudioFormat));
+end;
+
+constructor TPCMAudio.Create(const AudioFormat: TPCMAudioFormat; const Backend: IPCMAudioBackend);
+begin
   inherited Create;
-  var Backend := CreatePlatformPCMAudioBackend(AudioFormat);
+  AudioFormat.Validate;
   if Backend = nil then
     raise EArgumentNilException.Create('Audio backend must not be nil');
   FBackend := Backend;
   FBlockSamples := AudioFormat.BlockFrames;
+  FChannels := AudioFormat.Channels;
 end;
 
 procedure TPCMAudio.Clear;
@@ -45,7 +54,7 @@ end;
 
 procedure TPCMAudio.Submit(const Samples: array of SmallInt; Count: Integer);
 begin
-  if (Count < 0) or (Count > FBlockSamples) or (Count > Length(Samples)) then
+  if (Count < 0) or (Count > FBlockSamples) or (Count > Length(Samples) div FChannels) then
     raise EArgumentOutOfRangeException.Create('Invalid audio sample count');
   if Count > 0 then
     FBackend.Submit(Samples, Count);

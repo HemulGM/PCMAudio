@@ -1,4 +1,4 @@
-﻿unit PCM.Audio.Windows.MMSystem;
+unit PCM.Audio.Windows.MMSystem;
 
 interface
 
@@ -39,6 +39,7 @@ end;
 constructor TPCMAudioBackendWindows.Create(const AudioFormat: TPCMAudioFormat);
 begin
   inherited Create;
+  AudioFormat.Validate;
   FBlockFrames := AudioFormat.BlockFrames;
   FChannels := AudioFormat.Channels;
   SetLength(FHeaders, AudioFormat.BlockCount);
@@ -56,7 +57,7 @@ begin
     for var i := 0 to High(FHeaders) do
     begin
       FHeaders[i].lpData := PAnsiChar(@FBuffers[i, 0]);
-      FHeaders[i].dwBufferLength := SizeOf(FBuffers[i]);
+      FHeaders[i].dwBufferLength := Length(FBuffers[i]) * SizeOf(SmallInt);
       Code := waveOutPrepareHeader(FDevice, @FHeaders[i], SizeOf(TWaveHdr));
       if Code <> MMSYSERR_NOERROR then
         Break;

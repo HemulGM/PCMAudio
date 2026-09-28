@@ -1,16 +1,28 @@
-﻿unit PCM.Audio.Android.AudioTrack;
+unit PCM.Audio.Android.AudioTrack;
 
 interface
 
 uses
-  System.SysUtils, System.Math, Androidapi.JNI.Media, Androidapi.JNI.Os,
-  Androidapi.JNIBridge, PCM.Audio.Backend;
+  System.SysUtils, System.Math, PCM.Audio.Backend;
+
+const
+  AUDIOTRACK_ERROR_DEAD_OBJECT = -6;
 
 type
+  IPCMAudioTrackDevice = interface
+    ['{16990386-C211-4815-87E5-72CC27E736B7}']
+    function Open(const AudioFormat: TPCMAudioFormat): Integer;
+    function Write(const Samples: array of SmallInt; Count: Integer): Integer;
+    function PlaybackHead: Cardinal;
+    procedure Play;
+    procedure Pause;
+    procedure Flush;
+    procedure Close;
+  end;
+
   TPCMAudioBackendAndroid = class(TInterfacedObject, IPCMAudioBackend)
   private
-    FTrack: JAudioTrack;
-    FSamples: TJavaArray<SmallInt>;
+    FDevice: IPCMAudioTrackDevice;
     FDeviceOpen, FPlaying: Boolean;
     FCapacity: Integer;
     FWrittenPosition, FClears: Cardinal;
@@ -21,15 +33,10 @@ type
     procedure CloseDevice;
     procedure Fail(const MessageText: string);
     function ReadQueue(out Pending: Integer; out Played: Cardinal): Boolean;
-    function Open: Integer;
-    function Write(const Samples: array of SmallInt; Count: Integer): Integer;
-    function PlaybackHead: Cardinal;
-    procedure Play;
-    procedure Pause;
-    procedure Flush;
-    procedure Close;
+
   public
     constructor Create(const AudioFormat: TPCMAudioFormat); overload;
+    constructor Create(const AudioFormat: TPCMAudioFormat; const Device: IPCMAudioTrackDevice); overload;
     destructor Destroy; override;
   public { IPCMAudioBackend }
     procedure Clear;
@@ -40,10 +47,30 @@ type
 
 implementation
 
-function TPCMAudioBackendAndroid.Open: Integer;
+{$IFDEF ANDROID}
+uses
+  Androidapi.JNI.Media, Androidapi.JNI.Os, Androidapi.JNIBridge;
+
+type
+  TAndroidTrackDevice = class(TInterfacedObject, IPCMAudioTrackDevice)
+  private
+    FTrack: JAudioTrack;
+    FSamples: TJavaArray<SmallInt>;
+    FAudioFormat: TPCMAudioFormat;
+  public
+    function Open(const AudioFormat: TPCMAudioFormat): Integer;
+    function Write(const Samples: array of SmallInt; Count: Integer): Integer;
+    function PlaybackHead: Cardinal;
+    procedure Play;
+    procedure Pause;
+    procedure Flush;
+    procedure Close;
+  end;
+
+function TAndroidTrackDevice.Open(const AudioFormat: TPCMAudioFormat): Integer;
 begin
   Close;
-
+  FAudioFormat := AudioFormat;
   if TJBuild_VERSION.JavaClass.SDK_INT < 23 then
     raise Exception.Create('AudioTrack requires Android 6.0 / API 23 or newer');
   var ChannelMask: Integer;
@@ -90,7 +117,7 @@ begin
   Result := FTrack.getBufferSizeInFrames;
 end;
 
-function TPCMAudioBackendAndroid.Write(const Samples: array of SmallInt; Count: Integer): Integer;
+function TAndroidTrackDevice.Write(const Samples: array of SmallInt; Count: Integer): Integer;
 begin
   var SampleCount := Count * FAudioFormat.Channels;
 
@@ -108,28 +135,28 @@ begin
   Result := WrittenSamples div FAudioFormat.Channels;
 end;
 
-function TPCMAudioBackendAndroid.PlaybackHead: Cardinal;
+function TAndroidTrackDevice.PlaybackHead: Cardinal;
 begin
   // Java returns a signed int containing an unsigned wrapping frame counter.
   Result := UInt64(Int64(FTrack.getPlaybackHeadPosition) and $FFFFFFFF);
 end;
 
-procedure TPCMAudioBackendAndroid.Play;
+procedure TAndroidTrackDevice.Play;
 begin
   FTrack.play;
 end;
 
-procedure TPCMAudioBackendAndroid.Pause;
+procedure TAndroidTrackDevice.Pause;
 begin
   FTrack.pause;
 end;
 
-procedure TPCMAudioBackendAndroid.Flush;
+procedure TAndroidTrackDevice.Flush;
 begin
   FTrack.flush;
 end;
 
-procedure TPCMAudioBackendAndroid.Close;
+procedure TAndroidTrackDevice.Close;
 begin
   var Track := FTrack;
   FTrack := nil;
@@ -149,11 +176,27 @@ begin
   end;
 end;
 
+{$ENDIF}
 constructor TPCMAudioBackendAndroid.Create(const AudioFormat: TPCMAudioFormat);
 begin
+  {$IFDEF ANDROID}
+  Create(AudioFormat, TAndroidTrackDevice.Create);
+  {$ELSE}
+  Create(AudioFormat, nil);
+  {$ENDIF}
+end;
+
+constructor TPCMAudioBackendAndroid.Create(const AudioFormat: TPCMAudioFormat;
+  const Device: IPCMAudioTrackDevice);
+begin
   inherited Create;
+  AudioFormat.Validate;
   FAudioFormat := AudioFormat;
-  OpenDevice;
+  FDevice := Device;
+  if FDevice = nil then
+    FError := 'AudioTrack device is unavailable'
+  else
+    OpenDevice;
 end;
 
 function TPCMAudioBackendAndroid.OpenDevice: Boolean;
@@ -162,12 +205,12 @@ begin
   try
     var MaxBufferFrames := FAudioFormat.BlockCount * FAudioFormat.BlockFrames;
 
-    FCapacity := Open;
+    FCapacity := FDevice.Open(FAudioFormat);
 
     if (FCapacity <= 0) or (FCapacity > MaxBufferFrames) then
       raise Exception.CreateFmt('AudioTrack buffer size %d exceeds the supported queue', [FCapacity]);
 
-    FWrittenPosition := PlaybackHead;
+    FWrittenPosition := FDevice.PlaybackHead;
     FPlaying := False;
     FDeviceOpen := True;
     FError := '';
@@ -183,7 +226,8 @@ begin
   FDeviceOpen := False;
   FPlaying := False;
   try
-    Close;
+    if FDevice <> nil then
+      FDevice.Close;
   except
     on E: Exception do
       if FError = '' then
@@ -211,7 +255,7 @@ begin
   if not FDeviceOpen then
     Exit;
   try
-    Played := PlaybackHead;
+    Played := FDevice.PlaybackHead;
     // Difference modulo 2^32 handles both Java's sign bit and the ~27-hour wrap.
     var Difference := (UInt64(FWrittenPosition) + UInt64($100000000) - Played) and $FFFFFFFF;
     if Difference > UInt64(FCapacity) then
@@ -230,9 +274,9 @@ begin
     Exit;
   try
     // flush only discards queued PCM while paused/stopped; it resets the head.
-    Pause;
-    Flush;
-    FWrittenPosition := PlaybackHead;
+    FDevice.Pause;
+    FDevice.Flush;
+    FWrittenPosition := FDevice.PlaybackHead;
     FPlaying := False;
     FClears := (UInt64(FClears) + 1) and $FFFFFFFF;
   except
@@ -267,7 +311,7 @@ begin
   try
     if ToWrite > 0 then
     begin
-      Written := Write(Samples, ToWrite);
+      Written := FDevice.Write(Samples, ToWrite);
 
       if Written = AUDIOTRACK_ERROR_DEAD_OBJECT then
       begin
@@ -277,7 +321,7 @@ begin
         begin
           FClears := (UInt64(FClears) + 1) and $FFFFFFFF;
           ToWrite := Min(Count, FCapacity);
-          Written := Write(Samples, ToWrite);
+          Written := FDevice.Write(Samples, ToWrite);
         end;
       end;
 
@@ -304,7 +348,7 @@ begin
 
   if FDeviceOpen and not FPlaying and (Written > 0) then
   try
-    Play;
+    FDevice.Play;
     FPlaying := True;
   except
     on E: Exception do
@@ -338,4 +382,3 @@ begin
 end;
 
 end.
-
