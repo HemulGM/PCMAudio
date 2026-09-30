@@ -1,4 +1,4 @@
-unit PCM.Audio.Android.AudioTrack;
+﻿unit PCM.Audio.Android.AudioTrack;
 
 interface
 
@@ -48,6 +48,7 @@ type
 implementation
 
 {$IFDEF ANDROID}
+
 uses
   Androidapi.JNI.Media, Androidapi.JNI.Os, Androidapi.JNIBridge;
 
@@ -186,8 +187,7 @@ begin
   {$ENDIF}
 end;
 
-constructor TPCMAudioBackendAndroid.Create(const AudioFormat: TPCMAudioFormat;
-  const Device: IPCMAudioTrackDevice);
+constructor TPCMAudioBackendAndroid.Create(const AudioFormat: TPCMAudioFormat; const Device: IPCMAudioTrackDevice);
 begin
   inherited Create;
   AudioFormat.Validate;
@@ -382,3 +382,4 @@ begin
 end;
 
 end.
+

@@ -1,4 +1,4 @@
-unit PCM.Audio.Apple.AudioQueue;
+﻿unit PCM.Audio.Apple.AudioQueue;
 
 interface
 
@@ -99,6 +99,7 @@ const
   {$ENDIF}
 
 {$IF Defined(MACOS) or Defined(IOS)}
+
 function AudioQueueNewOutput(Format: PAppleStreamFormat; Callback: TAppleOutputCallback; UserData, RunLoop, RunLoopMode: Pointer; Flags: Cardinal; out Queue: Pointer): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueNewOutput';
 
 function AudioQueueAllocateBuffer(Queue: Pointer; Size: Cardinal; out Buffer: PAppleQueueBuffer): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueAllocateBuffer';
@@ -150,8 +151,7 @@ begin
   Create(AudioFormat, Api);
 end;
 
-constructor TPCMAudioBackendApple.Create(const AudioFormat: TPCMAudioFormat;
-  const Api: TAppleAudioApi);
+constructor TPCMAudioBackendApple.Create(const AudioFormat: TPCMAudioFormat; const Api: TAppleAudioApi);
 begin
   inherited Create;
   AudioFormat.Validate;
