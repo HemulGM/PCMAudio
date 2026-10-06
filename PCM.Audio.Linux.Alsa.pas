@@ -1,5 +1,9 @@
 ﻿unit PCM.Audio.Linux.Alsa;
 
+{$IF not Defined(LINUX) or Defined(ANDROID)}
+  {$MESSAGE FATAL 'ALSA audio backend is supported only on desktop Linux'}
+{$ENDIF}
+
 interface
 
 uses
