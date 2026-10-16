@@ -20,6 +20,7 @@ type
     constructor Create(const AudioFormat: TPCMAudioFormat); overload;
     constructor Create(const AudioFormat: TPCMAudioFormat; const Backend: IPCMAudioBackend); overload;
     procedure Clear;
+    function SetPaused(Value: Boolean): Boolean;
     procedure Submit(const Samples: array of SmallInt; Count: Integer);
     function QueueState: TPCMAudioQueueState;
     property Error: string read GetError;
@@ -50,6 +51,13 @@ end;
 procedure TPCMAudio.Clear;
 begin
   FBackend.Clear;
+end;
+
+function TPCMAudio.SetPaused(Value: Boolean): Boolean;
+begin
+  var Control: IPCMAudioPlaybackControl;
+  Result := Supports(FBackend,IPCMAudioPlaybackControl,Control);
+  if Result then Result := Control.SetPaused(Value);
 end;
 
 procedure TPCMAudio.Submit(const Samples: array of SmallInt; Count: Integer);

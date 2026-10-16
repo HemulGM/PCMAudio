@@ -101,3 +101,13 @@ The new implementation must implement the `IPCMAudioBackend` and honor the contr
 6. Report device failure via `Error` and `QueueState`.
 
 After adding the unit, it is connected to the conditional sections of the `PCM.Audio.Factory` and in `uses` the project for the corresponding platform.
+
+## Optional playback control
+
+`TPCMAudio.SetPaused(Boolean)` forwards to `IPCMAudioPlaybackControl` when a
+backend supports paused preroll. It returns false for an unsupported capability
+without changing the normal Submit contract. Existing clients continue to play
+immediately unless they call this method. The Windows backend supports it using
+waveOutPause/waveOutRestart; Submit still copies and queues PCM while paused.
+Callers can fill a bounded queue before restarting playback. Clear resets the
+device position, so device-clock users must rebase their submitted-frame epoch.

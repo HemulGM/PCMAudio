@@ -6,7 +6,7 @@ uses
   System.SysUtils, Winapi.Windows, Winapi.MMSystem, PCM.Audio.Backend;
 
 type
-  TPCMAudioBackendWindows = class(TInterfacedObject, IPCMAudioBackend)
+  TPCMAudioBackendWindows = class(TInterfacedObject, IPCMAudioBackend, IPCMAudioPlaybackControl)
   private
     FDevice: HWAVEOUT;
     FHeaders: array of TWaveHdr;
@@ -24,6 +24,7 @@ type
     destructor Destroy; override;
   public { IPCMAudioBackend }
     procedure Clear;
+    function SetPaused(Value: Boolean): Boolean;
     procedure Submit(const Samples: array of SmallInt; Count: Integer);
     function QueueState: TPCMAudioQueueState;
     function GetError: string;
@@ -111,7 +112,7 @@ begin
         end;
       TIME_BYTES:
         begin
-          Result.PlayedSamples := Position.cb div 2;
+          Result.PlayedSamples := Position.cb div Cardinal(FChannels * SizeOf(SmallInt));
           Result.PositionKnown := True;
         end;
     end;
@@ -127,6 +128,21 @@ begin
   FPrepared := 0;
   waveOutClose(FDevice);
   FDevice := 0;
+end;
+
+function TPCMAudioBackendWindows.SetPaused(Value: Boolean): Boolean;
+begin
+  Result := False;
+  if FDevice = 0 then Exit;
+  var Code: MMRESULT;
+  if Value then Code := waveOutPause(FDevice)
+  else Code := waveOutRestart(FDevice);
+  Result := Code = MMSYSERR_NOERROR;
+  if not Result and (Code <> MMSYSERR_NOTSUPPORTED) then
+  begin
+    FError := 'Audio device playback control failed';
+    Close;
+  end;
 end;
 
 procedure TPCMAudioBackendWindows.Submit(const Samples: array of SmallInt; Count: Integer);

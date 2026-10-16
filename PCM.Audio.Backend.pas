@@ -40,6 +40,13 @@ type
     property Error: string read GetError;
   end;
 
+  // Optional: queue a complete preroll before starting the device clock.
+  // Existing backends/clients retain their immediate-playback contract.
+  IPCMAudioPlaybackControl = interface
+    ['{8D33CC5A-C27F-4AAD-8452-294E424B0D01}']
+    function SetPaused(Value: Boolean): Boolean;
+  end;
+
 implementation
 
 uses
