@@ -1,8 +1,6 @@
 # PCM audio layer
 
-`PCM` is a portable PCM audio output layer. The emulator code
-only works with the `TPCMAudio` facade; the selection of the native API and queue management remain
-in the backend.
+`PCM` is a portable PCM audio output layer. 
 
 ## Composition
 
