@@ -113,6 +113,10 @@ begin
   if (FTrack = nil) or (FTrack.getState <> TJAudioTrack.JavaClass.STATE_INITIALIZED) then
     raise Exception.Create('AudioTrack initialization failed');
 
+  // A full-buffer start threshold can deadlock clients with a smaller preroll.
+  if TJBuild_VERSION.JavaClass.SDK_INT >= 31 then
+    FTrack.setStartThresholdInFrames(FAudioFormat.BlockFrames);
+
   FSamples := TJavaArray<SmallInt>.Create(FAudioFormat.BlockFrames * FAudioFormat.Channels);
 
   Result := FTrack.getBufferSizeInFrames;
