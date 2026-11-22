@@ -37,6 +37,7 @@ type
 
   public
     constructor Create(const AudioFormat: TPCMAudioFormat); overload;
+    constructor Create(const AudioFormat: TPCMAudioFormat; Usage: TPCMAudioUsage); overload;
     constructor Create(const AudioFormat: TPCMAudioFormat; const Device: IPCMAudioTrackDevice); overload;
     destructor Destroy; override;
   public { IPCMAudioBackend }
@@ -60,7 +61,9 @@ type
     FTrack: JAudioTrack;
     FSamples: TJavaArray<SmallInt>;
     FAudioFormat: TPCMAudioFormat;
+    FUsage: TPCMAudioUsage;
   public
+    constructor Create(Usage: TPCMAudioUsage);
     function Open(const AudioFormat: TPCMAudioFormat): Integer;
     function Write(const Samples: array of SmallInt; Count: Integer): Integer;
     function PlaybackHead: Cardinal;
@@ -69,6 +72,14 @@ type
     procedure Flush;
     procedure Close;
   end;
+
+constructor TAndroidTrackDevice.Create(Usage: TPCMAudioUsage);
+begin
+  inherited Create;
+  if (Usage <> TPCMAudioUsage.Game) and (Usage <> TPCMAudioUsage.Media) then
+    raise EArgumentOutOfRangeException.Create('Invalid audio usage');
+  FUsage := Usage;
+end;
 
 function TAndroidTrackDevice.Open(const AudioFormat: TPCMAudioFormat): Integer;
 begin
@@ -97,8 +108,11 @@ begin
   if MinimumBytes > MaxBufferBytes then
     raise Exception.CreateFmt('AudioTrack requires %d buffer bytes; queue limit is %d', [MinimumBytes, MaxBufferBytes]);
 
+  var NativeUsage := TJAudioAttributes.JavaClass.USAGE_GAME;
+  if FUsage = TPCMAudioUsage.Media then
+    NativeUsage := TJAudioAttributes.JavaClass.USAGE_MEDIA;
   var Attributes := TJAudioAttributes_Builder.JavaClass.init
-    .setUsage(TJAudioAttributes.JavaClass.USAGE_GAME)
+    .setUsage(NativeUsage)
     .setContentType(TJAudioAttributes.JavaClass.CONTENT_TYPE_MUSIC).build;
 
   var Format := TJAudioFormat_Builder.JavaClass.init
@@ -115,9 +129,15 @@ begin
   if (FTrack = nil) or (FTrack.getState <> TJAudioTrack.JavaClass.STATE_INITIALIZED) then
     raise Exception.Create('AudioTrack initialization failed');
 
-  // A full-buffer start threshold can deadlock clients with a smaller preroll.
+  // Capacity is queue headroom, not a requirement to prime the whole queue.
+  // The engine intentionally buffers less than this capacity. AudioTrack's
+  // default start threshold equals capacity and would otherwise stall forever.
   if TJBuild_VERSION.JavaClass.SDK_INT >= 31 then
-    FTrack.setStartThresholdInFrames(FAudioFormat.BlockFrames);
+  begin
+    var StartThreshold := FTrack.setStartThresholdInFrames(1);
+    if StartThreshold <> 1 then
+      raise Exception.CreateFmt('AudioTrack cannot configure immediate start (%d)', [StartThreshold]);
+  end;
 
   FSamples := TJavaArray<SmallInt>.Create(FAudioFormat.BlockFrames * FAudioFormat.Channels);
 
@@ -186,8 +206,15 @@ end;
 {$ENDIF}
 constructor TPCMAudioBackendAndroid.Create(const AudioFormat: TPCMAudioFormat);
 begin
+  Create(AudioFormat, TPCMAudioUsage.Game);
+end;
+
+constructor TPCMAudioBackendAndroid.Create(const AudioFormat: TPCMAudioFormat; Usage: TPCMAudioUsage);
+begin
+  if (Usage <> TPCMAudioUsage.Game) and (Usage <> TPCMAudioUsage.Media) then
+    raise EArgumentOutOfRangeException.Create('Invalid audio usage');
   {$IFDEF ANDROID}
-  Create(AudioFormat, TAndroidTrackDevice.Create);
+  Create(AudioFormat, TAndroidTrackDevice.Create(Usage));
   {$ELSE}
   Create(AudioFormat, nil);
   {$ENDIF}
