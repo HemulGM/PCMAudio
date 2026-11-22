@@ -20,10 +20,10 @@ type
     procedure Close;
   end;
 
-  TPCMAudioBackendAndroid = class(TInterfacedObject, IPCMAudioBackend)
+  TPCMAudioBackendAndroid = class(TInterfacedObject, IPCMAudioBackend, IPCMAudioPlaybackControl)
   private
     FDevice: IPCMAudioTrackDevice;
-    FDeviceOpen, FPlaying: Boolean;
+    FDeviceOpen, FPlaying, FPaused: Boolean;
     FCapacity: Integer;
     FWrittenPosition, FClears: Cardinal;
     FSubmitted, FDropped: UInt64;
@@ -31,6 +31,7 @@ type
     FAudioFormat: TPCMAudioFormat;
     function OpenDevice: Boolean;
     procedure CloseDevice;
+    procedure StartDevice;
     procedure Fail(const MessageText: string);
     function ReadQueue(out Pending: Integer; out Played: Cardinal): Boolean;
 
@@ -44,6 +45,7 @@ type
     procedure Submit(const Samples: array of SmallInt; Count: Integer);
     function QueueState: TPCMAudioQueueState;
     function GetError: string;
+    function SetPaused(Value: Boolean): Boolean;
   end;
 
 implementation
@@ -299,6 +301,47 @@ begin
   end;
 end;
 
+procedure TPCMAudioBackendAndroid.StartDevice;
+begin
+  if not FDeviceOpen or FPlaying or FPaused then
+    Exit;
+  try
+    FDevice.Play;
+    FPlaying := True;
+  except
+    on E: Exception do
+      Fail(E.Message);
+  end;
+end;
+
+function TPCMAudioBackendAndroid.SetPaused(Value: Boolean): Boolean;
+begin
+  if not FDeviceOpen then
+    Exit(False);
+  if FPaused = Value then
+    Exit(True);
+  FPaused := Value;
+  if FPaused then
+  begin
+    if FPlaying then
+    try
+      FDevice.Pause;
+      FPlaying := False;
+    except
+      on E: Exception do
+        Fail(E.Message);
+    end;
+  end
+  else
+  begin
+    var Pending: Integer;
+    var Played: Cardinal;
+    if ReadQueue(Pending, Played) and (Pending > 0) then
+      StartDevice;
+  end;
+  Result := FDeviceOpen;
+end;
+
 procedure TPCMAudioBackendAndroid.Clear;
 begin
   if not FDeviceOpen then
@@ -377,14 +420,8 @@ begin
 
   FWrittenPosition := (UInt64(FWrittenPosition) + Cardinal(Written)) and $FFFFFFFF;
 
-  if FDeviceOpen and not FPlaying and (Written > 0) then
-  try
-    FDevice.Play;
-    FPlaying := True;
-  except
-    on E: Exception do
-      Fail(E.Message);
-  end;
+  if Written > 0 then
+    StartDevice;
 end;
 
 function TPCMAudioBackendAndroid.QueueState: TPCMAudioQueueState;
