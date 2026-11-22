@@ -40,6 +40,8 @@ type
 
   TAppleOutputCallback = procedure(UserData, Queue: Pointer; Buffer: PAppleQueueBuffer); cdecl;
 
+  TAppleSelectDevice = function(Queue: Pointer; const EndpointId: string): Integer;
+
   TAppleAudioApi = record
     NewOutput: function(Format: PAppleStreamFormat; Callback: TAppleOutputCallback; UserData, RunLoop, RunLoopMode: Pointer; Flags: Cardinal; out Queue: Pointer): Integer; cdecl;
     AllocateBuffer: function(Queue: Pointer; Size: Cardinal; out Buffer: PAppleQueueBuffer): Integer; cdecl;
@@ -54,6 +56,7 @@ type
   TPCMAudioBackendApple = class(TInterfacedObject, IPCMAudioBackend)
   private
     FApi: TAppleAudioApi;
+    FSelectDevice: TAppleSelectDevice;
     FQueue: Pointer;
     FBuffers: array of PAppleQueueBuffer;
     FBusy: array of Integer;
@@ -64,14 +67,17 @@ type
     FClears: Cardinal;
     FError: string;
     FAudioFormat: TPCMAudioFormat;
-    procedure OpenDevice;
+    FEndpointRevision: Integer;
+    procedure CheckDevice;
+    procedure OpenPreferredDevice;
+    procedure OpenDevice(const EndpointId: string);
     procedure CloseDevice;
     procedure Fail(const Operation: string; Code: Integer);
     function EnsureStarted: Boolean;
     class procedure BufferReturned(UserData, Queue: Pointer; Buffer: PAppleQueueBuffer); static; cdecl;
   public
     constructor Create(const AudioFormat: TPCMAudioFormat); overload;
-    constructor Create(const AudioFormat: TPCMAudioFormat; const Api: TAppleAudioApi); overload;
+    constructor Create(const AudioFormat: TPCMAudioFormat; const Api: TAppleAudioApi; SelectDevice: TAppleSelectDevice = nil); overload;
     destructor Destroy; override;
     procedure Clear;
     procedure Submit(const Samples: array of SmallInt; Count: Integer);
@@ -79,9 +85,25 @@ type
     function GetError: string;
   end;
 
+{$IF Defined(MACOS) and not Defined(IOS)}
+type
+  TAppleInputCallback = procedure(UserData, Queue: Pointer; Buffer: PAppleQueueBuffer; StartTime: Pointer; PacketCount: Cardinal; Packets: Pointer); cdecl;
+
+function ListAppleAudioDevices(Kind: TAudioDeviceKind): TArray<TAudioDevice>;
+
+function OpenAppleInputQueue(const EndpointId: string; SampleRate, BufferFrames: Integer; Callback: TAppleInputCallback; UserData: Pointer): Pointer;
+
+procedure RecycleAppleInputBuffer(Queue: Pointer; Buffer: PAppleQueueBuffer);
+
+procedure CloseAppleInputQueue(Queue: Pointer);
+{$ENDIF}
+
 implementation
 
 uses
+  {$IF Defined(MACOS) and not Defined(IOS)}
+  Macapi.CoreAudio, Macapi.CoreFoundation,
+  {$ENDIF}
   {$IFDEF IOS}
   iOSapi.AVFAudio,
   {$ENDIF}
@@ -98,6 +120,19 @@ const
   _PU = '';
   {$ENDIF}
 
+function ApplePCMFormat(SampleRate, Channels: Integer): TAppleStreamFormat;
+begin
+  Result := Default(TAppleStreamFormat);
+  Result.SampleRate := SampleRate;
+  Result.FormatID := $6C70636D; // 'lpcm'
+  Result.FormatFlags := 4 or 8; // signed integer, packed, little endian
+  Result.BytesPerPacket := Channels * SizeOf(SmallInt);
+  Result.FramesPerPacket := 1;
+  Result.BytesPerFrame := Result.BytesPerPacket;
+  Result.ChannelsPerFrame := Channels;
+  Result.BitsPerChannel := 16;
+end;
+
 {$IF Defined(MACOS) or Defined(IOS)}
 
 function AudioQueueNewOutput(Format: PAppleStreamFormat; Callback: TAppleOutputCallback; UserData, RunLoop, RunLoopMode: Pointer; Flags: Cardinal; out Queue: Pointer): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueNewOutput';
@@ -111,6 +146,122 @@ function AudioQueueStart(Queue, StartTime: Pointer): Integer; cdecl; external Au
 function AudioQueueStop(Queue: Pointer; Immediate: Boolean): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueStop';
 
 function AudioQueueDispose(Queue: Pointer; Immediate: Boolean): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueDispose';
+
+{$IF Defined(MACOS) and not Defined(IOS)}
+function AudioQueueNewInput(Format: PAppleStreamFormat; Callback: TAppleInputCallback; UserData, RunLoop, RunLoopMode: Pointer; Flags: Cardinal; out Queue: Pointer): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueNewInput';
+
+function AudioQueueSetProperty(Queue: Pointer; PropertyId: Cardinal; Value: Pointer; Size: Cardinal): Integer; cdecl; external AudioToolbox name _PU + 'AudioQueueSetProperty';
+
+function SelectAppleQueueDevice(Queue: Pointer; const EndpointId: string): Integer;
+const
+  kAudioQueueProperty_CurrentDevice = $61716364; // 'aqcd', a CFStringRef
+begin
+  var UID := CFStringCreateWithCharacters(nil, Pointer(PChar(EndpointId)), Length(EndpointId));
+  if UID = nil then
+    Exit(-50); // paramErr
+  try
+    Result := AudioQueueSetProperty(Queue, kAudioQueueProperty_CurrentDevice, @UID, SizeOf(UID));
+  finally
+    CFRelease(UID);
+  end;
+end;
+
+function AppleDeviceString(Device: AudioDeviceID; PropertyId: Cardinal): string;
+begin
+  Result := '';
+  var Address: AudioObjectPropertyAddress;
+  Address.mSelector := PropertyId;
+  Address.mScope := kAudioObjectPropertyScopeGlobal;
+  Address.mElement := kAudioObjectPropertyElementMaster;
+  var Value: CFStringRef := nil;
+  var Size: UInt32 := SizeOf(Value);
+  if (AudioObjectGetPropertyData(Device, @Address, 0, nil, @Size, @Value) <> 0) or (Value = nil) then
+    Exit;
+  try
+    var Count := CFStringGetLength(Value);
+    SetLength(Result, Count);
+    if Count > 0 then
+      CFStringGetCharacters(Value, CFRangeMake(0, Count), Pointer(PChar(Result)));
+  finally
+    CFRelease(Value);
+  end;
+end;
+
+function ListAppleAudioDevices(Kind: TAudioDeviceKind): TArray<TAudioDevice>;
+begin
+  Result := nil;
+  var Address: AudioObjectPropertyAddress;
+  Address.mSelector := kAudioHardwarePropertyDevices;
+  Address.mScope := kAudioObjectPropertyScopeGlobal;
+  Address.mElement := kAudioObjectPropertyElementMaster;
+  var Size: UInt32 := 0;
+  if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, @Address, 0, nil, @Size) <> 0) or
+    (Size < SizeOf(AudioDeviceID)) then
+    Exit;
+  var Devices: TArray<AudioDeviceID>;
+  SetLength(Devices, Size div SizeOf(AudioDeviceID));
+  if AudioObjectGetPropertyData(kAudioObjectSystemObject, @Address, 0, nil, @Size, @Devices[0]) <> 0 then
+    Exit;
+  SetLength(Devices, Size div SizeOf(AudioDeviceID));
+  Address.mSelector := kAudioDevicePropertyStreams;
+  if Kind = TAudioDeviceKind.Capture then
+    Address.mScope := kAudioObjectPropertyScopeInput
+  else
+    Address.mScope := kAudioObjectPropertyScopeOutput;
+  for var Id in Devices do
+  begin
+    var StreamBytes: UInt32 := 0;
+    if (AudioObjectGetPropertyDataSize(Id, @Address, 0, nil, @StreamBytes) <> 0) or (StreamBytes = 0) then
+      Continue;
+    var Device: TAudioDevice;
+    Device.EndpointId := AppleDeviceString(Id, kAudioDevicePropertyDeviceUID);
+    if Device.EndpointId = '' then
+      Continue;
+    Device.Name := AppleDeviceString(Id, kAudioObjectPropertyName);
+    if Device.Name = '' then
+      Device.Name := Device.EndpointId;
+    Result := Result + [Device];
+  end;
+end;
+
+function OpenAppleInputQueue(const EndpointId: string; SampleRate, BufferFrames: Integer; Callback: TAppleInputCallback; UserData: Pointer): Pointer;
+begin
+  Result := nil;
+  var Format := ApplePCMFormat(SampleRate, 1);
+  var Queue: Pointer := nil;
+  if AudioQueueNewInput(@Format, Callback, UserData, nil, nil, 0, Queue) <> 0 then
+    Exit;
+  try
+    if (EndpointId <> '') and (SelectAppleQueueDevice(Queue, EndpointId) <> 0) then
+      Exit;
+    for var Index := 1 to 4 do
+    begin
+      var Buffer: PAppleQueueBuffer;
+      if (AudioQueueAllocateBuffer(Queue, BufferFrames * SizeOf(SmallInt), Buffer) <> 0) or
+        (AudioQueueEnqueueBuffer(Queue, Buffer, 0, nil) <> 0) then
+        Exit;
+    end;
+    if AudioQueueStart(Queue, nil) = 0 then
+    begin
+      Result := Queue;
+      Queue := nil;
+    end;
+  finally
+    CloseAppleInputQueue(Queue);
+  end;
+end;
+
+procedure RecycleAppleInputBuffer(Queue: Pointer; Buffer: PAppleQueueBuffer);
+begin
+  AudioQueueEnqueueBuffer(Queue, Buffer, 0, nil);
+end;
+
+procedure CloseAppleInputQueue(Queue: Pointer);
+begin
+  if Queue <> nil then
+    AudioQueueDispose(Queue, True);
+end;
+{$ENDIF}
 
 function ActivateAppleSession: Boolean;
 begin
@@ -148,32 +299,51 @@ begin
   Api.Dispose := AudioQueueDispose;
   Api.ActivateSession := ActivateAppleSession;
   {$ENDIF}
+  {$IF Defined(MACOS) and not Defined(IOS)}
+  Create(AudioFormat, Api, SelectAppleQueueDevice);
+  {$ELSE}
   Create(AudioFormat, Api);
+  {$ENDIF}
 end;
 
-constructor TPCMAudioBackendApple.Create(const AudioFormat: TPCMAudioFormat; const Api: TAppleAudioApi);
+constructor TPCMAudioBackendApple.Create(const AudioFormat: TPCMAudioFormat; const Api: TAppleAudioApi; SelectDevice: TAppleSelectDevice);
 begin
   inherited Create;
   AudioFormat.Validate;
   FAudioFormat := AudioFormat;
   FApi := Api;
+  FSelectDevice := SelectDevice;
   if not FApi.Complete then
     FError := 'Incomplete AudioQueue function table'
   else
-    OpenDevice;
+    OpenPreferredDevice;
 end;
 
-procedure TPCMAudioBackendApple.OpenDevice;
+procedure TPCMAudioBackendApple.CheckDevice;
 begin
-  var Format := Default(TAppleStreamFormat);
-  Format.SampleRate := FAudioFormat.SampleRate;
-  Format.FormatID := $6C70636D; // 'lpcm'
-  Format.FormatFlags := 4 or 8; // signed integer, packed, little endian
-  Format.BytesPerPacket := FAudioFormat.Channels * SizeOf(SmallInt);
-  Format.FramesPerPacket := 1;
-  Format.BytesPerFrame := FAudioFormat.Channels * SizeOf(SmallInt);
-  Format.ChannelsPerFrame := FAudioFormat.Channels;
-  Format.BitsPerChannel := 16;
+  if not Assigned(FSelectDevice) or
+    (FEndpointRevision = AudioEndpointRevision(TAudioDeviceKind.Playback)) or not FApi.Complete then
+    Exit;
+  if FQueue <> nil then
+    FClears := (UInt64(FClears) + 1) and High(Cardinal);
+  CloseDevice;
+  OpenPreferredDevice;
+end;
+
+procedure TPCMAudioBackendApple.OpenPreferredDevice;
+begin
+  var EndpointId := '';
+  if Assigned(FSelectDevice) then
+    EndpointId := PreferredAudioEndpoint(TAudioDeviceKind.Playback, FEndpointRevision);
+  OpenDevice(EndpointId);
+  if (FQueue = nil) and (EndpointId <> '') then
+    OpenDevice('');
+end;
+
+procedure TPCMAudioBackendApple.OpenDevice(const EndpointId: string);
+begin
+  FError := '';
+  var Format := ApplePCMFormat(FAudioFormat.SampleRate, FAudioFormat.Channels);
   // A nil run loop delivers callbacks on Audio Queue's internal thread.
   var Code := FApi.NewOutput(@Format, BufferReturned, Self, nil, nil, 0, FQueue);
   if Code <> 0 then
@@ -181,6 +351,15 @@ begin
     FQueue := nil;
     Fail('create', Code);
     Exit;
+  end;
+  if EndpointId <> '' then
+  begin
+    Code := FSelectDevice(FQueue, EndpointId);
+    if Code <> 0 then
+    begin
+      Fail('select device', Code);
+      Exit;
+    end;
   end;
   SetLength(FBuffers, FAudioFormat.BlockCount);
   SetLength(FBusy, FAudioFormat.BlockCount);
@@ -223,6 +402,7 @@ begin
   // hold a callback lock here, and retain Self/buffer pointers until it returns.
   FApi.Dispose(FQueue, True);
   FQueue := nil;
+  TInterlocked.Exchange(FStartRequested, 0);
   for var i := 0 to High(FBuffers) do
   begin
     FBuffers[i] := nil;
@@ -287,6 +467,7 @@ end;
 
 procedure TPCMAudioBackendApple.Clear;
 begin
+  CheckDevice;
   if FQueue = nil then
     Exit;
   var Code := FApi.Stop(FQueue, True); // synchronous stop also resets the queue
@@ -308,6 +489,7 @@ begin
     raise EArgumentOutOfRangeException.Create('Invalid audio frame count');
   if Count = 0 then
     Exit;
+  CheckDevice;
   if FQueue <> nil then
     for var i := 0 to High(FBuffers) do
       if TInterlocked.CompareExchange(FBusy[i], 1, 0) = 0 then
@@ -334,6 +516,7 @@ end;
 
 function TPCMAudioBackendApple.QueueState: TPCMAudioQueueState;
 begin
+  CheckDevice;
   Result := Default(TPCMAudioQueueState);
   Result.SubmittedSamples := FSubmitted;
   Result.DroppedSamples := FDropped;
@@ -345,6 +528,7 @@ end;
 
 function TPCMAudioBackendApple.GetError: string;
 begin
+  CheckDevice;
   Result := FError;
 end;
 

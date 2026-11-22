@@ -11,9 +11,11 @@ uses
 
 const
   ALSA_LIBRARY = 'libasound.so.2';
+  ALSA_ENDPOINT_PREFIX = 'alsa:';
 
 const
   SND_PCM_STREAM_PLAYBACK = 0;
+  SND_PCM_STREAM_CAPTURE = 1;
   SND_PCM_NONBLOCK = 1;
   SND_PCM_FORMAT_S16_LE = 2;
   SND_PCM_ACCESS_RW_INTERLEAVED = 3;
@@ -36,6 +38,7 @@ type
     AvailDelay: function(PCM: Pointer; out Avail, Delay: NativeInt): Integer; cdecl;
     AvailUpdate: function(PCM: Pointer): NativeInt; cdecl;
     WriteInterleaved: function(PCM, Buffer: Pointer; Frames: NativeUInt): NativeInt; cdecl;
+    ReadInterleaved: function(PCM, Buffer: Pointer; Frames: NativeUInt): NativeInt; cdecl;
     Prepare: function(PCM: Pointer): Integer; cdecl;
     Drop: function(PCM: Pointer): Integer; cdecl;
     State: function(PCM: Pointer): Integer; cdecl;
@@ -45,6 +48,8 @@ type
   end;
 
 function LoadAlsa(out Api: TAlsaApi; out Module: HMODULE; out Error: string): Boolean;
+
+function ListAlsaAudioDevices(Kind: TAudioDeviceKind): TArray<TAudioDevice>;
 
 type
   TPCMAudioBackendLinux = class(TInterfacedObject, IPCMAudioBackend)
@@ -77,7 +82,7 @@ type
 implementation
 
 uses
-  System.Math;
+  System.Math, Posix.Stdlib;
 
 function TAlsaApi.Complete: Boolean;
 begin
@@ -113,6 +118,7 @@ begin
     @Api.AvailDelay := GetProcAddress(Module, 'snd_pcm_avail_delay');
     @Api.AvailUpdate := GetProcAddress(Module, 'snd_pcm_avail_update');
     @Api.WriteInterleaved := GetProcAddress(Module, 'snd_pcm_writei');
+    @Api.ReadInterleaved := GetProcAddress(Module, 'snd_pcm_readi');
     @Api.Prepare := GetProcAddress(Module, 'snd_pcm_prepare');
     @Api.Drop := GetProcAddress(Module, 'snd_pcm_drop');
     @Api.State := GetProcAddress(Module, 'snd_pcm_state');
@@ -127,6 +133,83 @@ begin
     end;
   end;
   Result := Module <> 0;
+end;
+
+function ListAlsaAudioDevices(Kind: TAudioDeviceKind): TArray<TAudioDevice>;
+var
+  GetHints: function(Card: Integer; InterfaceName: PAnsiChar; out Hints: PPointer): Integer; cdecl;
+  GetHint: function(Hint: Pointer; Key: PAnsiChar): PAnsiChar; cdecl;
+  FreeHints: function(Hints: PPointer): Integer; cdecl;
+
+  function ReadHint(Hint: Pointer; Key: PAnsiChar): string;
+  begin
+    var Text := GetHint(Hint, Key);
+    try
+      Result := string(UTF8String(Text));
+    finally
+      Posix.Stdlib.free(Text);
+    end;
+  end;
+
+begin
+  Result := nil;
+  var Module := LoadLibrary(ALSA_LIBRARY);
+  if Module = 0 then
+    Exit;
+  try
+    @GetHints := GetProcAddress(Module, 'snd_device_name_hint');
+    @GetHint := GetProcAddress(Module, 'snd_device_name_get_hint');
+    @FreeHints := GetProcAddress(Module, 'snd_device_name_free_hint');
+    if not (Assigned(GetHints) and Assigned(GetHint) and Assigned(FreeHints)) then
+      Exit;
+    var Hints: PPointer := nil;
+    if GetHints(-1, 'pcm', Hints) < 0 then
+      Exit;
+    if Hints = nil then
+      Exit;
+    try
+      var Item := Hints;
+      while Item^ <> nil do
+      begin
+        var Hint := Item^;
+        Inc(Item);
+        var Direction := ReadHint(Hint, 'IOID');
+        if ((Kind = TAudioDeviceKind.Playback) and (Direction = 'Input')) or
+          ((Kind = TAudioDeviceKind.Capture) and (Direction = 'Output')) then
+          Continue;
+        var DeviceName := ReadHint(Hint, 'NAME');
+        if (DeviceName = '') or (DeviceName = 'null') or (DeviceName = 'default') or
+          (DeviceName = 'pulse') or (DeviceName = 'pipewire') then
+          Continue;
+        if DeviceName.StartsWith('hw:') then
+          DeviceName := 'plug' + DeviceName;
+        var Device: TAudioDevice;
+        Device.EndpointId := ALSA_ENDPOINT_PREFIX + DeviceName;
+        var Duplicate := False;
+        for var Existing in Result do
+          if Existing.EndpointId = Device.EndpointId then
+          begin
+            Duplicate := True;
+            Break;
+          end;
+        if Duplicate then
+          Continue;
+        Device.Name := ReadHint(Hint, 'DESC');
+        var LineBreak := Device.Name.IndexOf(#10);
+        if LineBreak >= 0 then
+          Device.Name := Device.Name.Substring(0, LineBreak);
+        Device.Name := Device.Name.Trim;
+        if Device.Name = '' then
+          Device.Name := DeviceName;
+        Device.Name := Device.Name + ' (ALSA)';
+        Result := Result + [Device];
+      end;
+    finally
+      FreeHints(Hints);
+    end;
+  finally
+    FreeLibrary(Module);
+  end;
 end;
 
 constructor TPCMAudioBackendLinux.Create(const AudioFormat: TPCMAudioFormat; const DeviceName: UTF8String);

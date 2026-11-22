@@ -3,6 +3,15 @@
 interface
 
 type
+  {$SCOPEDENUMS ON}
+  TAudioDeviceKind = (Playback, Capture);
+  {$SCOPEDENUMS OFF}
+
+  TAudioDevice = record
+    EndpointId: string;
+    Name: string;
+  end;
+
   TPCMAudioFormat = record
     SampleRate: Integer;
     Channels: Integer;
@@ -47,10 +56,51 @@ type
     function SetPaused(Value: Boolean): Boolean;
   end;
 
+procedure SetPreferredAudioEndpoint(Kind: TAudioDeviceKind; const EndpointId: string);
+
+function PreferredAudioEndpoint(Kind: TAudioDeviceKind; out Revision: Integer): string;
+
+function AudioEndpointRevision(Kind: TAudioDeviceKind): Integer;
+
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils, System.SyncObjs;
+
+var
+  EndpointLock: TCriticalSection;
+  EndpointIds: array[TAudioDeviceKind] of string;
+  EndpointRevisions: array[TAudioDeviceKind] of Integer;
+
+procedure SetPreferredAudioEndpoint(Kind: TAudioDeviceKind; const EndpointId: string);
+begin
+  EndpointLock.Acquire;
+  try
+    if EndpointIds[Kind] <> EndpointId then
+    begin
+      EndpointIds[Kind] := EndpointId;
+      TInterlocked.Increment(EndpointRevisions[Kind]);
+    end;
+  finally
+    EndpointLock.Release;
+  end;
+end;
+
+function PreferredAudioEndpoint(Kind: TAudioDeviceKind; out Revision: Integer): string;
+begin
+  EndpointLock.Acquire;
+  try
+    Result := EndpointIds[Kind];
+    Revision := EndpointRevisions[Kind];
+  finally
+    EndpointLock.Release;
+  end;
+end;
+
+function AudioEndpointRevision(Kind: TAudioDeviceKind): Integer;
+begin
+  Result := TInterlocked.CompareExchange(EndpointRevisions[Kind], 0, 0);
+end;
 
 procedure TPCMAudioFormat.Validate;
 begin
@@ -62,6 +112,12 @@ begin
     (Int64(SampleRate) * Channels * SizeOf(SmallInt) > MaxInt) then
     raise EArgumentOutOfRangeException.Create('Invalid PCM audio format');
 end;
+
+initialization
+  EndpointLock := TCriticalSection.Create;
+
+finalization
+  EndpointLock.Free;
 
 end.
 
