@@ -177,8 +177,7 @@ begin
   Result := CreatePlatformPCMAudioBackend(Format, TPCMAudioUsage.Game);
 end;
 
-function CreatePlatformPCMAudioBackend(const Format: TPCMAudioFormat;
-  Usage: TPCMAudioUsage): IPCMAudioBackend;
+function CreatePlatformPCMAudioBackend(const Format: TPCMAudioFormat; Usage: TPCMAudioUsage): IPCMAudioBackend;
 begin
   Format.Validate;
   {$IF Defined(PCM_AUDIO_NULL)}
