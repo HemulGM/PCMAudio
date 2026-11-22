@@ -9,6 +9,7 @@ type
   TPCMAudioQueueState = PCM.Audio.Backend.TPCMAudioQueueState;
 
   TPCMAudioFormat = PCM.Audio.Backend.TPCMAudioFormat;
+  TPCMAudioUsage = PCM.Audio.Backend.TPCMAudioUsage;
 
   TPCMAudio = class
   private
@@ -18,6 +19,7 @@ type
     function GetError: string;
   public
     constructor Create(const AudioFormat: TPCMAudioFormat); overload;
+    constructor Create(const AudioFormat: TPCMAudioFormat; Usage: TPCMAudioUsage); overload;
     constructor Create(const AudioFormat: TPCMAudioFormat; const Backend: IPCMAudioBackend); overload;
     procedure Clear;
     function SetPaused(Value: Boolean): Boolean;
@@ -33,8 +35,13 @@ uses
 
 constructor TPCMAudio.Create(const AudioFormat: TPCMAudioFormat);
 begin
+  Create(AudioFormat, TPCMAudioUsage.Game);
+end;
+
+constructor TPCMAudio.Create(const AudioFormat: TPCMAudioFormat; Usage: TPCMAudioUsage);
+begin
   AudioFormat.Validate;
-  Create(AudioFormat, CreatePlatformPCMAudioBackend(AudioFormat));
+  Create(AudioFormat, CreatePlatformPCMAudioBackend(AudioFormat, Usage));
 end;
 
 constructor TPCMAudio.Create(const AudioFormat: TPCMAudioFormat; const Backend: IPCMAudioBackend);

@@ -3,6 +3,10 @@
 interface
 
 type
+  {$SCOPEDENUMS ON}
+  TPCMAudioUsage = (Game, Media);
+  {$SCOPEDENUMS OFF}
+
   TPCMAudioFormat = record
     SampleRate: Integer;
     Channels: Integer;
