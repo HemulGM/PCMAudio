@@ -21,12 +21,17 @@ type
     Channels: Byte;
     Reserved: array[0..2] of Byte;
   end;
+
   TPulseBufferAttr = record
     MaxLength, TargetLength, PreBuffer, MinRequest, FragmentSize: Cardinal;
   end;
+
   PPulseSampleSpec = ^TPulseSampleSpec;
+
   PPulseBufferAttr = ^TPulseBufferAttr;
+
   TPulseSuccess = procedure(Stream: Pointer; Success: Integer; UserData: Pointer); cdecl;
+
   TPulseApi = record
     MainloopNew: function: Pointer; cdecl;
     MainloopFree: procedure(Loop: Pointer); cdecl;
@@ -43,15 +48,13 @@ type
     ContextError: function(Context: Pointer): Integer; cdecl;
     StrError: function(Code: Integer): PAnsiChar; cdecl;
     StreamNew: function(Context: Pointer; Name: PAnsiChar; Spec: PPulseSampleSpec; ChannelMap: Pointer): Pointer; cdecl;
-    StreamConnect: function(Stream: Pointer; Device: PAnsiChar; Attr: PPulseBufferAttr;
-      Flags: Integer; Volume, SyncStream: Pointer): Integer; cdecl;
+    StreamConnect: function(Stream: Pointer; Device: PAnsiChar; Attr: PPulseBufferAttr; Flags: Integer; Volume, SyncStream: Pointer): Integer; cdecl;
     StreamDisconnect: function(Stream: Pointer): Integer; cdecl;
     StreamUnref: procedure(Stream: Pointer); cdecl;
     StreamState: function(Stream: Pointer): Integer; cdecl;
     StreamBufferAttr: function(Stream: Pointer): PPulseBufferAttr; cdecl;
     StreamWritableSize: function(Stream: Pointer): NativeUInt; cdecl;
-    StreamWrite: function(Stream, Data: Pointer; Bytes: NativeUInt; FreeCallback: Pointer;
-      Offset: Int64; Seek: Integer): Integer; cdecl;
+    StreamWrite: function(Stream, Data: Pointer; Bytes: NativeUInt; FreeCallback: Pointer; Offset: Int64; Seek: Integer): Integer; cdecl;
     StreamLatency: function(Stream: Pointer; out Microseconds: UInt64; out Negative: Integer): Integer; cdecl;
     StreamFlush: function(Stream: Pointer; Callback: TPulseSuccess; UserData: Pointer): Pointer; cdecl;
     StreamCork: function(Stream: Pointer; Cork: Integer; Callback: TPulseSuccess; UserData: Pointer): Pointer; cdecl;
@@ -90,8 +93,7 @@ type
   public
     constructor Create(const AudioFormat: TPCMAudioFormat; const DeviceName: UTF8String = ''); overload;
     // Caller retains ownership of an injected native library (for API tests).
-    constructor Create(const AudioFormat: TPCMAudioFormat; const Api: TPulseApi;
-      const DeviceName: UTF8String = ''); overload;
+    constructor Create(const AudioFormat: TPCMAudioFormat; const Api: TPulseApi; const DeviceName: UTF8String = ''); overload;
     destructor Destroy; override;
     procedure Clear;
     function SetPaused(Value: Boolean): Boolean;
@@ -103,6 +105,7 @@ type
 type
   // Enumeration and capture use a caller-driven main loop.
   TPulseGetState = function(Handle: Pointer): Integer; cdecl;
+
   TPulseListCallback = procedure(Context, Info: Pointer; EndOfList: Integer; UserData: Pointer); cdecl;
 
   TPulseStreamApi = record
@@ -121,12 +124,10 @@ type
     StreamNew: function(Context: Pointer; Name: PAnsiChar; Spec: PPulseSampleSpec; Map: Pointer): Pointer; cdecl;
     StreamDisconnect: function(Stream: Pointer): Integer; cdecl;
     StreamUnref: procedure(Stream: Pointer); cdecl;
-    ConnectPlayback: function(Stream: Pointer; Name: PAnsiChar; Attr: PPulseBufferAttr;
-      Flags: Cardinal; Volume, SyncStream: Pointer): Integer; cdecl;
+    ConnectPlayback: function(Stream: Pointer; Name: PAnsiChar; Attr: PPulseBufferAttr; Flags: Cardinal; Volume, SyncStream: Pointer): Integer; cdecl;
     ConnectCapture: function(Stream: Pointer; Name: PAnsiChar; Attr: PPulseBufferAttr; Flags: Cardinal): Integer; cdecl;
     GetBufferAttr: function(Stream: Pointer): PPulseBufferAttr; cdecl;
-    WritableSize: function(Stream: Pointer): NativeUInt; cdecl;
-    Write: function(Stream, Buffer: Pointer; Size: NativeUInt; FreeCallback: Pointer; Offset: Int64; Seek: Integer): Integer; cdecl;
+    WritableSize: function(Stream: Pointer): NativeUInt; cdecl; Write: function(Stream, Buffer: Pointer; Size: NativeUInt; FreeCallback: Pointer; Offset: Int64; Seek: Integer): Integer; cdecl;
     Peek: function(Stream: Pointer; out Data: PByte; out Size: NativeUInt): Integer; cdecl;
     Drop: function(Stream: Pointer): Integer; cdecl;
     Flush: function(Stream, Callback, UserData: Pointer): Pointer; cdecl;
@@ -159,6 +160,7 @@ type
   end;
 
 function ListPulseAudioDevices(Kind: TAudioDeviceKind): TArray<TAudioDevice>;
+
 function OpenPulseAudioPlayback(const Format: TPCMAudioFormat; const DeviceName: string): IPCMAudioBackend;
 
 implementation
@@ -188,6 +190,7 @@ type
   EPulseAudio = class(Exception);
 
   PPulseDeviceInfo = ^TPulseDeviceInfo;
+
   TPulseDeviceInfo = record
     Name: PAnsiChar;
     Index: Cardinal;
@@ -195,6 +198,7 @@ type
   end;
 
   PPulseSourceInfo = ^TPulseSourceInfo;
+
   TPulseSourceInfo = record
     Device: TPulseDeviceInfo;
     SampleSpec: TPulseSampleSpec;
@@ -212,6 +216,7 @@ type
   end;
 
   PPulseDeviceList = ^TPulseDeviceList;
+
   TPulseDeviceList = record
     Devices: TArray<TAudioDevice>;
     Complete: Boolean;
@@ -516,7 +521,6 @@ begin
   end;
 end;
 
-
 function OpenPulseAudioPlayback(const Format: TPCMAudioFormat; const DeviceName: string): IPCMAudioBackend;
 begin
   Result := TPCMAudioBackendPulseAudio.Create(Format, UTF8String(DeviceName));
@@ -591,18 +595,20 @@ begin
   inherited Create;
   AudioFormat.Validate;
   FFormat := AudioFormat;
-  if LoadPulseAudio(FApi, FModule, FError) then OpenDevice(DeviceName);
+  if LoadPulseAudio(FApi, FModule, FError) then
+    OpenDevice(DeviceName);
 end;
 
-constructor TPCMAudioBackendPulseAudio.Create(const AudioFormat: TPCMAudioFormat;
-  const Api: TPulseApi; const DeviceName: UTF8String);
+constructor TPCMAudioBackendPulseAudio.Create(const AudioFormat: TPCMAudioFormat; const Api: TPulseApi; const DeviceName: UTF8String);
 begin
   inherited Create;
   AudioFormat.Validate;
   FFormat := AudioFormat;
   FApi := Api;
-  if not FApi.Complete then FError := 'Incomplete PulseAudio function table'
-  else OpenDevice(DeviceName);
+  if not FApi.Complete then
+    FError := 'Incomplete PulseAudio function table'
+  else
+    OpenDevice(DeviceName);
 end;
 
 procedure TPCMAudioBackendPulseAudio.OpenDevice(const DeviceName: UTF8String);
@@ -667,7 +673,8 @@ begin
         Attr.MinRequest := FFormat.Channels * SizeOf(SmallInt);
         Attr.FragmentSize := Cardinal(-1);
         var Device: PAnsiChar := nil;
-        if DeviceName <> '' then Device := PAnsiChar(DeviceName);
+        if DeviceName <> '' then
+          Device := PAnsiChar(DeviceName);
         FNativePaused := True;
         if FApi.StreamConnect(FStream, Device, @Attr, PA_STREAM_START_CORKED or PA_STREAM_INTERPOLATE_TIMING or
           PA_STREAM_AUTO_TIMING_UPDATE or PA_STREAM_ADJUST_LATENCY, nil, nil) < 0 then
@@ -683,7 +690,8 @@ begin
           var ActualAttr := FApi.StreamBufferAttr(FStream);
           if (ActualAttr = nil) or (ActualAttr.MaxLength < Cardinal(FFormat.Channels * SizeOf(SmallInt))) then
             FailLocked('read buffer capacity')
-          else FCapacityBytes := ActualAttr.MaxLength;
+          else
+            FCapacityBytes := ActualAttr.MaxLength;
           Exit;
         end;
         if FApi.StreamState(FStream) >= PA_STREAM_FAILED then
@@ -707,7 +715,8 @@ end;
 
 procedure TPCMAudioBackendPulseAudio.CancelOperation(var Operation: Pointer);
 begin
-  if Operation = nil then Exit;
+  if Operation = nil then
+    Exit;
   FApi.OperationCancel(Operation);
   FApi.OperationUnref(Operation);
   Operation := nil;
@@ -737,17 +746,21 @@ destructor TPCMAudioBackendPulseAudio.Destroy;
 begin
   if FLoop <> nil then
   begin
-    if FStarted then FApi.MainloopLock(FLoop);
+    if FStarted then
+      FApi.MainloopLock(FLoop);
     try
       CloseLocked;
     finally
-      if FStarted then FApi.MainloopUnlock(FLoop);
+      if FStarted then
+        FApi.MainloopUnlock(FLoop);
     end;
     // Must stop WITHOUT the lock; stop joins the native callback thread.
-    if FStarted then FApi.MainloopStop(FLoop);
+    if FStarted then
+      FApi.MainloopStop(FLoop);
     FApi.MainloopFree(FLoop);
   end;
-  if FModule <> 0 then FreeLibrary(FModule);
+  if FModule <> 0 then
+    FreeLibrary(FModule);
   inherited;
 end;
 
@@ -772,7 +785,8 @@ end;
 function TPCMAudioBackendPulseAudio.UpdateLocked: Boolean;
 begin
   Result := False;
-  if FStream = nil then Exit;
+  if FStream = nil then
+    Exit;
   if (FApi.ContextState(FContext) <> PA_CONTEXT_READY) or
     (FApi.StreamState(FStream) <> PA_STREAM_READY) then
   begin
@@ -791,7 +805,8 @@ begin
   end;
   if FFlush <> nil then
   begin
-    if FApi.OperationState(FFlush) = PA_OPERATION_RUNNING then Exit;
+    if FApi.OperationState(FFlush) = PA_OPERATION_RUNNING then
+      Exit;
     FApi.OperationUnref(FFlush);
     FFlush := nil;
     if not FFlushSuccess then
@@ -809,16 +824,19 @@ end;
 
 function TPCMAudioBackendPulseAudio.ReadPositionLocked: Boolean;
 begin
-  if FNativePaused then Exit(True);
+  if FNativePaused then
+    Exit(True);
   var Latency: UInt64;
   var Negative: Integer;
   Result := FApi.StreamLatency(FStream, Latency, Negative) >= 0;
-  if not Result then Exit; // Timing is not available immediately after opening.
+  if not Result then
+    Exit; // Timing is not available immediately after opening.
   var Pending: UInt64 := 0;
   if Negative = 0 then
   begin
     // Avoid multiplication overflow for an invalid/unbounded server latency.
-    if Latency > UInt64(MaxInt) * 1000000 div Cardinal(FFormat.SampleRate) then Exit(False);
+    if Latency > UInt64(MaxInt) * 1000000 div Cardinal(FFormat.SampleRate) then
+      Exit(False);
     Pending := (Latency * Cardinal(FFormat.SampleRate) + 999999) div 1000000;
   end;
   if Pending <= FEpochSubmitted then
@@ -837,8 +855,10 @@ begin
     FApi.MainloopLock(FLoop);
     try
       UpdateLocked;
-      if FStream = nil then Exit(False);
-      if (FFlush = nil) and (FCork = nil) then Exit(True);
+      if FStream = nil then
+        Exit(False);
+      if (FFlush = nil) and (FCork = nil) then
+        Exit(True);
       if Deadline.ElapsedMilliseconds >= 3000 then
       begin
         FError := 'PulseAudio control operation timed out';
@@ -854,10 +874,12 @@ end;
 
 procedure TPCMAudioBackendPulseAudio.Clear;
 begin
-  if not FStarted then Exit;
+  if not FStarted then
+    Exit;
   FApi.MainloopLock(FLoop);
   try
-    if not UpdateLocked then Exit;
+    if not UpdateLocked then
+      Exit;
     // Keep the clock stopped between flush and the next Submit, even when
     // the application itself is in immediate-playback mode.
     CancelOperation(FCork);
@@ -871,7 +893,8 @@ begin
     FNativePaused := True;
     FFlushSuccess := False;
     FFlush := FApi.StreamFlush(FStream, FlushDone, Self);
-    if FFlush = nil then FailLocked('flush')
+    if FFlush = nil then
+      FailLocked('flush')
     else
     begin
       FQueued := 0;
@@ -882,17 +905,21 @@ begin
   end;
   // Wait only for the server's flush acknowledgement, never for queued audio
   // to play. A following Submit can immediately fill a fresh epoch.
-  if FFlush <> nil then WaitForOperations;
+  if FFlush <> nil then
+    WaitForOperations;
 end;
 
 function TPCMAudioBackendPulseAudio.SetPaused(Value: Boolean): Boolean;
 begin
   Result := False;
-  if not FStarted then Exit;
+  if not FStarted then
+    Exit;
   FApi.MainloopLock(FLoop);
   try
-    if not UpdateLocked then Exit;
-    if FCork <> nil then Exit(FPaused = Value);
+    if not UpdateLocked then
+      Exit;
+    if FCork <> nil then
+      Exit(FPaused = Value);
     if not Value and (FQueued = 0) then
     begin
       FPaused := False;
@@ -900,7 +927,8 @@ begin
     end;
     FCorkSuccess := False;
     FCork := FApi.StreamCork(FStream, Ord(Value), CorkDone, Self);
-    if FCork = nil then FailLocked('pause/resume')
+    if FCork = nil then
+      FailLocked('pause/resume')
     else
     begin
       FPaused := Value;
@@ -910,7 +938,8 @@ begin
   finally
     FApi.MainloopUnlock(FLoop);
   end;
-  if Result then Result := WaitForOperations;
+  if Result then
+    Result := WaitForOperations;
 end;
 
 procedure TPCMAudioBackendPulseAudio.Submit(const Samples: array of SmallInt; Count: Integer);
@@ -918,7 +947,8 @@ begin
   if (Count < 0) or (Count > FFormat.BlockFrames) or
     (Count > Length(Samples) div FFormat.Channels) then
     raise EArgumentOutOfRangeException.Create('Invalid audio frame count');
-  if Count = 0 then Exit;
+  if Count = 0 then
+    Exit;
   if not FStarted then
   begin
     Inc(FDropped, Count);
@@ -959,7 +989,8 @@ begin
     end;
     // A nil free callback makes libpulse copy the PCM before returning.
     var SeekMode := 0; // PA_SEEK_RELATIVE
-    if FQueued = 0 then SeekMode := 2; // PA_SEEK_RELATIVE_ON_READ
+    if FQueued = 0 then
+      SeekMode := 2; // PA_SEEK_RELATIVE_ON_READ
     if FApi.StreamWrite(FStream, @Samples[0], Bytes, nil, 0, SeekMode) < 0 then
     begin
       Inc(FDropped, Count);
@@ -975,8 +1006,10 @@ begin
       CancelOperation(FCork);
       FCorkSuccess := False;
       FCork := FApi.StreamCork(FStream, 0, CorkDone, Self);
-      if FCork = nil then FailLocked('start playback')
-      else FNativePaused := False;
+      if FCork = nil then
+        FailLocked('start playback')
+      else
+        FNativePaused := False;
     end;
   finally
     FApi.MainloopUnlock(FLoop);
@@ -990,7 +1023,8 @@ begin
   begin
     FApi.MainloopLock(FLoop);
     try
-      if UpdateLocked then Result.PositionKnown := ReadPositionLocked;
+      if UpdateLocked then
+        Result.PositionKnown := ReadPositionLocked;
       Result.PlayedSamples := FPlayed and $FFFFFFFF;
       Result.QueuedBlocks := FQueued;
       Result.DeviceOpen := FStream <> nil;
@@ -1015,7 +1049,9 @@ begin
       FApi.MainloopUnlock(FLoop);
     end;
   end
-  else Result := FError;
+  else
+    Result := FError;
 end;
 
 end.
+

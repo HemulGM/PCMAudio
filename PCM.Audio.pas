@@ -9,6 +9,7 @@ type
   TPCMAudioQueueState = PCM.Audio.Backend.TPCMAudioQueueState;
 
   TPCMAudioFormat = PCM.Audio.Backend.TPCMAudioFormat;
+
   TPCMAudioUsage = PCM.Audio.Backend.TPCMAudioUsage;
 
   TPCMAudio = class
@@ -63,8 +64,9 @@ end;
 function TPCMAudio.SetPaused(Value: Boolean): Boolean;
 begin
   var Control: IPCMAudioPlaybackControl;
-  Result := Supports(FBackend,IPCMAudioPlaybackControl,Control);
-  if Result then Result := Control.SetPaused(Value);
+  Result := Supports(FBackend, IPCMAudioPlaybackControl, Control);
+  if Result then
+    Result := Control.SetPaused(Value);
 end;
 
 procedure TPCMAudio.Submit(const Samples: array of SmallInt; Count: Integer);

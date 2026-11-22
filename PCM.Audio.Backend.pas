@@ -5,6 +5,7 @@ interface
 type
   {$SCOPEDENUMS ON}
   TAudioDeviceKind = (Playback, Capture);
+
   TPCMAudioUsage = (Game, Media);
   {$SCOPEDENUMS OFF}
 

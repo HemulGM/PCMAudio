@@ -6,8 +6,8 @@ uses
   PCM.Audio.Backend;
 
 function CreatePlatformPCMAudioBackend(const Format: TPCMAudioFormat): IPCMAudioBackend; overload;
-function CreatePlatformPCMAudioBackend(const Format: TPCMAudioFormat;
-  Usage: TPCMAudioUsage): IPCMAudioBackend; overload;
+
+function CreatePlatformPCMAudioBackend(const Format: TPCMAudioFormat; Usage: TPCMAudioUsage): IPCMAudioBackend; overload;
 
 function PlatformSupportsAudioDeviceSelection: Boolean;
 

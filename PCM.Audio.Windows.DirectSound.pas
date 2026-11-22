@@ -12,10 +12,11 @@ uses
 
 type
   TPCMAudioBackendDirectSound = class(TInterfacedObject, IPCMAudioBackend, IPCMAudioPlaybackControl)
-  private type
-    TBlock = record
-      FirstByte, EndByte: UInt64;
-    end;
+  private
+    type
+      TBlock = record
+        FirstByte, EndByte: UInt64;
+      end;
   private
     FDevice: IDirectSound;
     FBuffer: IDirectSoundBuffer;
@@ -72,9 +73,12 @@ begin
   end;
   FBufferBytes := Frames * FFrameBytes;
   SetLength(FBlocks, AudioFormat.BlockCount);
-  if not Check(DirectSoundCreate(nil, FDevice, nil), 'open device') then Exit;
-  if Window = 0 then Window := GetDesktopWindow;
-  if not Check(FDevice.SetCooperativeLevel(Window, DSSCL_NORMAL), 'set cooperative level') then Exit;
+  if not Check(DirectSoundCreate(nil, FDevice, nil), 'open device') then
+    Exit;
+  if Window = 0 then
+    Window := GetDesktopWindow;
+  if not Check(FDevice.SetCooperativeLevel(Window, DSSCL_NORMAL), 'set cooperative level') then
+    Exit;
 
   var Format: TWaveFormatEx;
   FillChar(Format, SizeOf(Format), 0);
@@ -90,8 +94,10 @@ begin
   Desc.dwFlags := DSBCAPS_GETCURRENTPOSITION2 or DSBCAPS_GLOBALFOCUS;
   Desc.dwBufferBytes := FBufferBytes;
   Desc.lpwfxFormat := @Format;
-  if not Check(FDevice.CreateSoundBuffer(Desc, FBuffer, nil), 'create buffer') then Exit;
-  if not ResetBuffer then Exit;
+  if not Check(FDevice.CreateSoundBuffer(Desc, FBuffer, nil), 'create buffer') then
+    Exit;
+  if not ResetBuffer then
+    Exit;
 
   // Service the ring even when the owning thread stops submitting. Otherwise
   // a looping DirectSound buffer would replay stale PCM after an underrun.
@@ -130,7 +136,8 @@ begin
     FWorker.WaitFor;
     FWorker.Free;
   end;
-  if FBuffer <> nil then FBuffer.Stop;
+  if FBuffer <> nil then
+    FBuffer.Stop;
   FBuffer := nil;
   FDevice := nil;
   FWake.Free;
@@ -142,7 +149,8 @@ procedure TPCMAudioBackendDirectSound.Fail(const Operation: string; Code: HRESUL
 begin
   if FError = '' then
     FError := 'DirectSound ' + Operation + ': HRESULT 0x' + IntToHex(Cardinal(Code), 8);
-  if FBuffer <> nil then FBuffer.Stop;
+  if FBuffer <> nil then
+    FBuffer.Stop;
   FRunning := False;
   FQueued := 0;
   FBuffer := nil;
@@ -152,25 +160,32 @@ end;
 function TPCMAudioBackendDirectSound.Check(Code: HRESULT; const Operation: string): Boolean;
 begin
   Result := Code >= 0;
-  if not Result then Fail(Operation, Code);
+  if not Result then
+    Fail(Operation, Code);
 end;
 
 function TPCMAudioBackendDirectSound.WriteBuffer(Offset, Count: Cardinal; Data: Pointer): Boolean;
 begin
-  if Count = 0 then Exit(True);
+  if Count = 0 then
+    Exit(True);
   var Part1, Part2: Pointer;
   var Size1, Size2: DWORD;
   Result := Check(FBuffer.Lock(Offset, Count, @Part1, @Size1, @Part2, @Size2, 0), 'lock buffer');
-  if not Result then Exit;
+  if not Result then
+    Exit;
   if Data = nil then
   begin
-    if Size1 > 0 then FillChar(Part1^, Size1, 0);
-    if Size2 > 0 then FillChar(Part2^, Size2, 0);
+    if Size1 > 0 then
+      FillChar(Part1^, Size1, 0);
+    if Size2 > 0 then
+      FillChar(Part2^, Size2, 0);
   end
   else
   begin
-    if Size1 > 0 then Move(Data^, Part1^, Size1);
-    if Size2 > 0 then Move(PByte(NativeUInt(Data) + Size1)^, Part2^, Size2);
+    if Size1 > 0 then
+      Move(Data^, Part1^, Size1);
+    if Size2 > 0 then
+      Move(PByte(NativeUInt(Data) + Size1)^, Part2^, Size2);
   end;
   Result := Check(FBuffer.Unlock(Part1, Size1, Part2, Size2), 'unlock buffer');
 end;
@@ -178,8 +193,10 @@ end;
 function TPCMAudioBackendDirectSound.ResetBuffer: Boolean;
 begin
   Result := Check(FBuffer.Stop, 'stop buffer');
-  if Result then Result := Check(FBuffer.SetCurrentPosition(0), 'rewind buffer');
-  if Result then Result := WriteBuffer(0, FBufferBytes, nil);
+  if Result then
+    Result := Check(FBuffer.SetCurrentPosition(0), 'rewind buffer');
+  if Result then
+    Result := WriteBuffer(0, FBufferBytes, nil);
   FRunning := False;
   FReadByte := 0;
   FWriteByte := 0;
@@ -189,9 +206,11 @@ end;
 
 procedure TPCMAudioBackendDirectSound.Service;
 begin
-  if (FBuffer = nil) or not FRunning then Exit;
+  if (FBuffer = nil) or not FRunning then
+    Exit;
   var PlayCursor, WriteCursor: DWORD;
-  if not Check(FBuffer.GetCurrentPosition(@PlayCursor, @WriteCursor), 'read position') then Exit;
+  if not Check(FBuffer.GetCurrentPosition(@PlayCursor, @WriteCursor), 'read position') then
+    Exit;
   var Tick := GetTickCount64;
   // A whole missed revolution makes the hardware position ambiguous. Close
   // instead of reporting an invented playback position or replaying the ring.
@@ -208,11 +227,13 @@ begin
   begin
     var First := Max(FReadByte, FBlocks[I].FirstByte);
     var Last := Min(NewRead, FBlocks[I].EndByte);
-    if Last > First then Inc(FPlayed, (Last - First) div FFrameBytes);
+    if Last > First then
+      Inc(FPlayed, (Last - First) div FFrameBytes);
   end;
   // Consumed data is behind the play cursor and must become silence before
   // the next revolution. This also handles variable-sized submissions.
-  if not WriteBuffer(FLastCursor, Delta, nil) then Exit;
+  if not WriteBuffer(FLastCursor, Delta, nil) then
+    Exit;
   FLastCursor := (UInt64(FLastCursor) + Delta) mod FBufferBytes;
   FSafeCursor := WriteCursor;
   FReadByte := NewRead;
@@ -220,14 +241,17 @@ begin
   while (FQueued > 0) and (FBlocks[0].EndByte <= FReadByte) do
   begin
     Dec(FQueued);
-    for var I := 0 to FQueued - 1 do FBlocks[I] := FBlocks[I + 1];
+    for var I := 0 to FQueued - 1 do
+      FBlocks[I] := FBlocks[I + 1];
   end;
-  if FQueued = 0 then ResetBuffer;
+  if FQueued = 0 then
+    ResetBuffer;
 end;
 
 procedure TPCMAudioBackendDirectSound.StartPlayback;
 begin
-  if (FBuffer = nil) or FRunning or FPaused or (FQueued = 0) then Exit;
+  if (FBuffer = nil) or FRunning or FPaused or (FQueued = 0) then
+    Exit;
   if Check(FBuffer.Play(0, 0, DSBPLAY_LOOPING), 'start playback') then
   begin
     FRunning := True;
@@ -239,7 +263,8 @@ procedure TPCMAudioBackendDirectSound.Clear;
 begin
   FGuard.Acquire;
   try
-    if FBuffer = nil then Exit;
+    if FBuffer = nil then
+      Exit;
     FQueued := 0;
     if ResetBuffer then
     begin
@@ -256,14 +281,17 @@ begin
   FGuard.Acquire;
   try
     Service;
-    if FBuffer = nil then Exit(False);
+    if FBuffer = nil then
+      Exit(False);
     if Value and FRunning then
     begin
-      if not Check(FBuffer.Stop, 'pause playback') then Exit(False);
+      if not Check(FBuffer.Stop, 'pause playback') then
+        Exit(False);
       FRunning := False;
     end;
     FPaused := Value;
-    if not Value then StartPlayback;
+    if not Value then
+      StartPlayback;
     Result := FBuffer <> nil;
   finally
     FGuard.Release;
@@ -275,7 +303,8 @@ begin
   if (Count < 0) or (Count > FFormat.BlockFrames) or
     (Count > Length(Samples) div FFormat.Channels) then
     raise EArgumentOutOfRangeException.Create('Invalid audio frame count');
-  if Count = 0 then Exit;
+  if Count = 0 then
+    Exit;
   FGuard.Acquire;
   try
     Service;
@@ -345,3 +374,4 @@ begin
 end;
 
 end.
+
